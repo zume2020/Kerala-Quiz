@@ -108,7 +108,7 @@ def unset(update, context):
 
     job = context.chat_data['job']
     job.schedule_removal()
-    del context.chat_data['job']
+    # del context.chat_data['job']
 
     update.message.reply_text('cancelled!')
 
