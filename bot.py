@@ -5,14 +5,13 @@ import json
 import requests
 import random
 from telegram.ext import Updater, CommandHandler
+from telegram.ext import MessageHandler, Filters
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-
-
 
 url = 'https://opentdb.com/api.php?amount=10&category=22&difficulty=easy&type=multiple'
 
@@ -22,24 +21,33 @@ j = r.json()
 
 global pool
 
-# Define a few command handlers. These usually take the two arguments update and
-# context. Error handlers also receive the raised TelegramError object in error.
 def start(update, context):
-    update.message.reply_text('Hi! Use /set <seconds> to set a timer')
+    update.message.reply_text('Hi! Use /quiz to start quiz')
 
 
 def alarm(context):
     """Send the alarm message."""
+    global answer
+    global category
+
     pool = j['results']
     # print(pool)
     random.shuffle(pool)
 
-    x = pool.pop()
-    # print(x['category'],x['question'],x['correct_answer'])
-    question = x['question']
+    try:
+        x = pool.pop()
+        question = x['question']
+        answer   = x['correct_answer'].lower()
+        category = x['category']
 
-    job = context.job
-    context.bot.send_message(job.context, text=question)
+        print("answer from alarm ",answer)
+
+        job = context.job
+        context.bot.send_message(job.context, text=question)
+
+    except IndexError as e:
+        update.message.reply_text('quis ends')
+
 
 
 def set_timer(update, context):
@@ -52,7 +60,7 @@ def set_timer(update, context):
         if 'job' in context.chat_data:
             old_job = context.chat_data['job']
             old_job.schedule_removal()
-        new_job = context.job_queue.run_repeating(alarm, 10, context=chat_id)
+        new_job = context.job_queue.run_repeating(alarm, 15, context=chat_id)
         context.chat_data['job'] = new_job
 
         update.message.reply_text('question!')
@@ -73,6 +81,10 @@ def unset(update, context):
 
     update.message.reply_text('cancelled!')
 
+def check(update, context):
+    print("answer in check ", update.message.text)
+    if update.message.text.lower() == answer:
+        context.bot.send_message(chat_id=update.effective_chat.id, text="correct answer")
 
 def error(update, context):
     """Log Errors caused by Updates."""
@@ -92,6 +104,8 @@ def main():
                                   pass_job_queue=True,
                                   pass_chat_data=True))
     dp.add_handler(CommandHandler("unset", unset, pass_chat_data=True))
+
+    dp.add_handler(MessageHandler(Filters.text, check))
 
     dp.add_error_handler(error)
 
