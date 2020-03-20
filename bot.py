@@ -12,6 +12,7 @@ import json
 import requests
 import random
 from time import sleep
+from telegram import  ParseMode
 from telegram.ext import Updater, CommandHandler
 from telegram.ext import MessageHandler, Filters
 
@@ -76,11 +77,16 @@ def send_quiz(context):
                 else:
                     hint = ""
 
-                q_message = "{} \n{} \n{}".format(category,question,hint)
-                context.bot.send_message(job.context, text=q_message)
+                q_message = "❓*QUESTION* _[{}]_ \n{} \n{}".format(category,question,hint)
+                context.bot.send_message(job.context,
+                    text=q_message,
+                    parse_mode=ParseMode.MARKDOWN)
                 if x == 3:
-                    noGuessMessage = "⛔️ Nobody guessed, Correct answer was {}".format(answer)
-                    context.bot.send_message(job.context, text=noGuessMessage)
+                    noGuessMessage = "⛔️ Nobody guessed, Correct answer was *{}*".format(answer)
+                    context.bot.send_message(job.context,
+                        text=noGuessMessage,
+                        parse_mode=ParseMode.MARKDOWN)
+
                 sleep(12)
             else:
                 print("Correct answer triggered")
@@ -120,7 +126,7 @@ def set_quiz(update, context):
     chat_id = update.message.chat_id
     try:
         # Add job to queue and stop current one if there is a timer already
-        update.message.reply_text('round starts!')
+        update.message.reply_text('🏁 *Round Starts*!',parse_mode=ParseMode.MARKDOWN)
 
         if 'job' in context.chat_data:
             old_job = context.chat_data['job']
@@ -137,14 +143,14 @@ def set_quiz(update, context):
 def unset(update, context):
     """Remove the job if the user changed their mind."""
     if 'job' not in context.chat_data:
-        update.message.reply_text('You have no active quizes')
+        update.message.reply_text('You have no active quiZZzZes!')
         return
 
     job = context.chat_data['job']
     job.schedule_removal()
     # del context.chat_data['job']
 
-    update.message.reply_text('cancelled!')
+    update.message.reply_text('✋ *Stopped*!',parse_mode=ParseMode.MARKDOWN)
 
 
 
@@ -160,15 +166,22 @@ def check(update, context):
     if update.message.text.lower() == answer:
         print("Correct answer")
         global correct_answer, score
+
         correct_answer = 1
+
         f_name = update.message.from_user.first_name
-        answer_result = "Correct answer: {}\n{}".format(answer, f_name)
-        context.bot.send_message(chat_id=update.effective_chat.id, text=answer_result)
+
+        answer_result = "🍀 Yes, *{}*!\n\n🏆 {} +1".format(answer, f_name)
+
+        context.bot.send_message(chat_id=update.effective_chat.id, 
+            text=answer_result,
+            parse_mode=ParseMode.MARKDOWN)
 
         if f_name in score:
             score[f_name] +=1
         else:
             score[f_name] =1
+
 
 
 def error(update, context):
