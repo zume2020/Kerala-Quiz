@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 
+# -------------------------------------------------------------
+# Kerala Quiz - A Telegram Bot for playing quiz in communities.
+# @author: Sumithran a.k.a zume
+# @github: https://github.com/zume2020
+# license: MIT
+# -------------------------------------------------------------
+
 import logging
 import json
 import requests
@@ -36,7 +43,7 @@ def send_quiz(context):
     global answer
     global category
     global correct_answer
-    
+
     pool = j['results']
     # print(pool)
     random.shuffle(pool)
