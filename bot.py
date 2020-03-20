@@ -21,16 +21,13 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 logger = logging.getLogger(__name__)
 
-url = 'https://opentdb.com/api.php?amount=5&category=22&difficulty=easy&type=multiple'
-
 print("starting engine.")
-r = requests.get(url)
-j = r.json()
-
-global pool
-global delay_flag
 
 
+# global pool
+# global delay_flag
+
+q_round = 0
 correct_answer = 0
 delay_flag = 0
 
@@ -43,6 +40,12 @@ def send_quiz(context):
     global answer
     global category
     global correct_answer
+    global q_round
+
+    url = 'https://opentdb.com/api.php?amount=5&category=22&type=multiple'
+
+    r = requests.get(url)
+    j = r.json()
 
     pool = j['results']
     # print(pool)
@@ -74,14 +77,27 @@ def send_quiz(context):
 
                 q_message = "{} \n{} \n{}".format(category,question,hint)
                 context.bot.send_message(job.context, text=q_message)
+                if x == 3:
+                    noGuessMessage = "⛔️ Nobody guessed, Correct answer was {}".format(answer)
+                    context.bot.send_message(job.context, text=noGuessMessage)
                 sleep(12)
             else:
                 print("Correct answer triggered")
-
+        print(x)
         correct_answer = 0 #check this
+        q_round += 1
+        print("q round ",q_round)
+
+        if q_round > 4:
+            #stoping the quiz
+            context.bot.send_message(job.context, text="stoped")
+            job.schedule_removal()
+
 
     except IndexError as e:
         job = context.job
+        print("q round while error is",q_round)
+        print(e)
         context.bot.send_message(job.context, text="stoped")
         job.schedule_removal()
 
