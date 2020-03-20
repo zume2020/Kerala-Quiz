@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 print("starting engine.")
 
+score = {}
 
 # global pool
 # global delay_flag
@@ -87,10 +88,20 @@ def send_quiz(context):
         correct_answer = 0 #check this
         q_round += 1
         print("q round ",q_round)
+        print(score)
 
         if q_round > 4:
+            q_round = 0
             #stoping the quiz
-            context.bot.send_message(job.context, text="stoped")
+
+            score_message = ""
+            sorted_score = sorted(score.items(), key=lambda x: x[1])    
+            print(sorted_score)
+            for k, v in sorted_score:
+                print(k, v)
+                score_message += "{} {}\n".format(k,v)
+
+            context.bot.send_message(job.context, text=score_message)
             job.schedule_removal()
 
 
@@ -137,12 +148,28 @@ def unset(update, context):
 
 
 
+# def check(update, context):
+#     if update.message.text.lower() == answer:
+#         global correct_answer, score
+#         correct_answer = 1
+#         answer_result = "Correct answer: {}\n{}".format(answer,update.message.chat.first_name)
+#         context.bot.send_message(chat_id=update.effective_chat.id, text=answer_result)
+#         score.append([update.message.chat.first_name,0])
+
 def check(update, context):
     if update.message.text.lower() == answer:
-        global correct_answer
+        print("Correct answer")
+        global correct_answer, score
         correct_answer = 1
-        answer_result = "Correct answer: {}\n{}".format(answer,update.message.chat.first_name)
+        f_name = update.message.from_user.first_name
+        answer_result = "Correct answer: {}\n{}".format(answer, f_name)
         context.bot.send_message(chat_id=update.effective_chat.id, text=answer_result)
+
+        if f_name in score:
+            score[f_name] +=1
+        else:
+            score[f_name] =1
+
 
 def error(update, context):
     """Log Errors caused by Updates."""
