@@ -11,6 +11,7 @@ import logging
 import json
 import requests
 import random
+import config
 
 from time import sleep
 from telegram import ParseMode
@@ -20,9 +21,9 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, run_a
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("QUIZ")
 
-logging.INFO("Starting Engine")
+logger.info("Starting Engine")
 
 score = {}
 
@@ -192,17 +193,10 @@ def error(update, context):
     logger.warning('Update "%s" caused error "%s"', update, context.error)
 
 
-def getToken():
-    with open('token.json') as f:
-        data = json.load(f)
-        token = data['token']
-    return token
-
-
 def main():
     """Run bot."""
 
-    updater = Updater(getToken(), use_context=True)
+    updater = Updater(config.TOKEN, use_context=True)
 
     dp = updater.dispatcher
 
