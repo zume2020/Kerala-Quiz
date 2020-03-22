@@ -10,8 +10,9 @@
 import logging
 import json
 import requests
-import random
 import config
+import re
+import html
 
 from time import sleep
 from telegram import ParseMode
@@ -31,6 +32,11 @@ logger.info("Successfully started!")
 
 # Number of Questions/Rounds per Session
 PER_SESSION_ROUND = 5
+# Time between hints
+PER_HINT_TIME = 12
+# Maximum number of hints + 2 (Q+M)
+MAX_HINT = 6
+
 # URI to grab 1 Question each
 # TODO Create categories
 API_URI = "https://opentdb.com/api.php?amount=1&type=multiple"
@@ -52,27 +58,34 @@ def send_quiz(context):
     for i in range(1, PER_SESSION_ROUND + 1):
         data = requests.get(API_URI).json()["results"][0]
 
-        question = chat_data["question"] = data["question"]
-        answer = chat_data["answer"] = data["correct_answer"]
-        category = chat_data["category"] = data["category"]
+        question = chat_data["question"] = html.unescape(data["question"])
+        answer = chat_data["answer"] = html.unescape(data["correct_answer"])
+        category = chat_data["category"] = html.unescape(data["category"])
 
         chat_data["answered"] = False
-        for x in range(4):
+
+        hints = MAX_HINT
+        if len(answer) < MAX_HINT:
+            hints = len(answer)+1
+
+        for x in range(hints):
             if chat_data["answered"] == False:
                 hint = ""
-                if x > 0:
+                if x == hints-1:
+                    del chat_data["answer"]
+                    context.bot.send_message(chat_id,
+                                             text=f"⛔️ Nobody guessed, Correct answer was *{answer}*",
+                                             parse_mode=ParseMode.MARKDOWN)
+                    break
+                elif x > 0:
                     # TODO Improve hint
-                    hint = "Hint: {}".format(answer[-x:])
+                    hint = "_Hint:_ {}".format(answer[-x:])
 
                 context.bot.send_message(chat_id,
                                          text=f"❓*QUESTION* _[{category}]_ \n\n{question}\n\n{hint}",
                                          parse_mode=ParseMode.MARKDOWN)
-                if x == 3:
-                    context.bot.send_message(chat_id,
-                                             text=f"⛔️ Nobody guessed, Correct answer was *{answer}*",
-                                             parse_mode=ParseMode.MARKDOWN)
 
-                sleep(12)
+                sleep(PER_HINT_TIME)
             else:
                 break
 
@@ -82,8 +95,9 @@ def send_quiz(context):
     for k, v in sorted_score:
         score_message += f"{k} - `{v}`\n"
 
-    context.bot.send_message(chat_id, text=score_message,
-                             parse_mode=ParseMode.MARKDOWN)
+    if score_message != "*Rank List:*\n\n":
+        context.bot.send_message(chat_id, text=score_message,
+                                 parse_mode=ParseMode.MARKDOWN)
     job.schedule_removal()
     chat_data.clear()
 
@@ -125,6 +139,7 @@ def check(update, context):
     answer = context.chat_data["answer"]
     if update.message.text.lower() == answer.lower():
         context.chat_data["answered"] = True
+        del context.chat_data["answer"]
         score = context.chat_data["score"]
         f_name = update.effective_user.first_name
         answer_result = "🍀 Yes, *{}*!\n\n🏆 {} +1".format(answer, f_name)
