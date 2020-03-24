@@ -150,6 +150,7 @@ def send_quiz(context):
 
 def set_quiz(update, context):
     context.chat_data["cat_id"] = update.callback_query.data
+    context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     chat_id = update.effective_chat.id
     try:
         # Add job to queue and stop current one if there is a timer already
