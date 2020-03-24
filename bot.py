@@ -15,8 +15,8 @@ import re
 import html
 
 from time import sleep
-from telegram import ParseMode
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, run_async
+from telegram import ParseMode, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, run_async, CallbackQueryHandler
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -36,10 +36,55 @@ PER_SESSION_ROUND = 5
 PER_HINT_TIME = 12
 # Maximum number of hints + 2 (Q+M)
 MAX_HINT = 6
+# Keys per line in Categories
+PER_LINE_KEYS = 3
 
-# URI to grab 1 Question each
-# TODO Create categories
-API_URI = "https://opentdb.com/api.php?amount=1&type=multiple"
+# Categories
+CATEGORIES = {
+    "General Knowledge": 9,
+    "Books": 10,
+    "Films": 11,
+    "Music": 12,
+    "Television": 14,
+    "Video Games": 15,
+    "Board Games": 16,
+    "Science & Nature": 17,
+    "Computers": 18,
+    "Mathematics": 19,
+    "Mythology": 20,
+    "Sports": 21,
+    "Geography": 22,
+    "History": 23,
+    "Politics": 24,
+    "Art": 25,
+    "Celebrities": 26,
+    "Animals": 27
+}
+
+CATEGORIES_KEYBOARD = []
+count = 0
+temp = []
+for item in CATEGORIES:
+    count += 1
+    temp.append(InlineKeyboardButton(item, callback_data=CATEGORIES[item]))
+    if count % PER_LINE_KEYS == 0:
+        CATEGORIES_KEYBOARD.append(temp)
+        temp = []
+    elif count == len(CATEGORIES):
+        CATEGORIES_KEYBOARD.append(temp)
+CATEGORIES_KEYBOARD = InlineKeyboardMarkup(CATEGORIES_KEYBOARD)
+
+
+def gen_api_uri(category=None, difficulty=None):
+    if category:
+        cat = f"&category={category}"
+    else:
+        cat = ""
+    if difficulty:
+        dif = f"&difficulty={difficulty}"
+    else:
+        dif = "&difficulty=medium"
+    return f"https://opentdb.com/api.php?amount=1&type=multiple{cat}{dif}"
 
 
 def start(update, context):
@@ -56,7 +101,8 @@ def send_quiz(context):
     score = chat_data["score"]
 
     for i in range(1, PER_SESSION_ROUND + 1):
-        data = requests.get(API_URI).json()["results"][0]
+        data = requests.get(gen_api_uri(category=chat_data["cat_id"])).json()[
+            "results"][0]
 
         question = chat_data["question"] = html.unescape(data["question"])
         answer = chat_data["answer"] = html.unescape(data["correct_answer"])
@@ -103,11 +149,13 @@ def send_quiz(context):
 
 
 def set_quiz(update, context):
+    context.chat_data["cat_id"] = update.callback_query.data
+    context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     chat_id = update.effective_chat.id
     try:
         # Add job to queue and stop current one if there is a timer already
-        update.message.reply_text(
-            '🏁 *Round Starts*!', parse_mode=ParseMode.MARKDOWN)
+        context.bot.send_message(
+            update.effective_chat.id, "🏁 *Round Starts*!", parse_mode=ParseMode.MARKDOWN)
 
         context.chat_data["score"] = {}
 
@@ -120,6 +168,12 @@ def set_quiz(update, context):
 
     except (IndexError, ValueError):
         update.message.reply_text('error')
+
+
+def send_categories(update, context):
+    """Send a list of categories to choose from"""
+    context.bot.send_message(update.effective_chat.id, "*Choose one:*",
+                             parse_mode=ParseMode.MARKDOWN, reply_markup=CATEGORIES_KEYBOARD)
 
 
 def unset(update, context):
@@ -136,6 +190,8 @@ def unset(update, context):
 
 
 def check(update, context):
+    if not context.chat_data["answer"]:
+        return
     answer = context.chat_data["answer"]
     if update.message.text.lower() == answer.lower():
         context.chat_data["answered"] = True
@@ -162,7 +218,8 @@ def main():
     """Run bot."""
     dp.add_handler(CommandHandler("start", start, Filters.private))
     dp.add_handler(CommandHandler("help", start))
-    dp.add_handler(CommandHandler("quiz", set_quiz))
+    dp.add_handler(CommandHandler("quiz", send_categories))
+    dp.add_handler(CallbackQueryHandler(set_quiz))
     dp.add_handler(CommandHandler("stop", unset))
     dp.add_handler(MessageHandler(Filters.text, check))
     dp.add_error_handler(error)
