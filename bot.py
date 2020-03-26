@@ -97,13 +97,23 @@ def top(update, context):
     table = get_total_table()[:10]
     if table == []:
         return
+    
+    score = {}
+    ident = {}
+    for entry in table:
+        if entry.user_id in score:
+            score[entry.user_id] += entry.score
+        else:
+            score[entry.user_id] = entry.score
+            ident[entry.user_id] = entry.user_name
+
     msg = "*Global Leaderboard*\n\n"
     c = 0
-    for user in table:
+    for user_id, score in sorted(score.items(), key=lambda x: x[1]):
         tag = f"#{c+1}"
         if c < 3:
             tag = TROPHY_ICONS[c]
-        msg += f"`{tag}` {user.user_name} 🏆{user.score}"
+        msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
         c += 1
     context.bot.send_message(update.effective_chat.id,
                              msg, parse_mode=ParseMode.MARKDOWN)
@@ -131,7 +141,7 @@ def weekly(update, context):
         tag = f"#{c+1}"
         if c < 3:
             tag = TROPHY_ICONS[c]
-        msg += f"`{tag}` {ident[user_id]} 🏆{score}"
+        msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
         c += 1
     context.bot.send_message(update.effective_chat.id,
                              msg, parse_mode=ParseMode.MARKDOWN)
