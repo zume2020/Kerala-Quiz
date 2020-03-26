@@ -15,6 +15,7 @@ import re
 import html
 
 from time import sleep
+from hint import hintGen
 from telegram import ParseMode, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, run_async, CallbackQueryHandler
 
@@ -35,7 +36,7 @@ PER_SESSION_ROUND = 5
 # Time between hints
 PER_HINT_TIME = 12
 # Maximum number of hints + 2 (Q+M)
-MAX_HINT = 6
+MAX_HINT = 5
 # Keys per line in Categories
 PER_LINE_KEYS = 3
 
@@ -112,7 +113,9 @@ def send_quiz(context):
 
         hints = MAX_HINT
         if len(answer) < MAX_HINT:
-            hints = len(answer)+1
+            hints = len(answer)
+
+        hin_t = hintGen(answer)
 
         for x in range(hints):
             if chat_data["answered"] == False:
@@ -124,12 +127,11 @@ def send_quiz(context):
                                              parse_mode=ParseMode.MARKDOWN)
                     break
                 elif x > 0:
-                    # TODO Improve hint
-                    hint = "_Hint:_ {}".format(answer[-x:])
+                    hint = "<i>Hint: {}</i>".format(hin_t[x-1])
 
                 context.bot.send_message(chat_id,
-                                         text=f"❓*QUESTION* _[{category}]_ \n\n{question}\n\n{hint}",
-                                         parse_mode=ParseMode.MARKDOWN)
+                                         text=f"❓<b>QUESTION</b> <i>[{category}]</i> \n\n{question}\n\n{hint}",
+                                         parse_mode=ParseMode.HTML)
 
                 sleep(PER_HINT_TIME)
             else:
