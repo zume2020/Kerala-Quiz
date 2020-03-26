@@ -13,11 +13,14 @@ import requests
 import config
 import re
 import html
+import datetime
 
 from time import sleep
 from hint import hintGen
 from telegram import ParseMode, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, run_async, CallbackQueryHandler
+from telegram.utils.helpers import escape_markdown
+from database import get_total_table, get_week_table, inc_or_new_user
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -39,6 +42,8 @@ PER_HINT_TIME = 12
 MAX_HINT = 5
 # Keys per line in Categories
 PER_LINE_KEYS = 3
+# Trophy icons for Leaderboard
+TROPHY_ICONS = ["🥇", "🥈", "🥉"]
 
 # Categories
 CATEGORIES = {
@@ -88,6 +93,50 @@ def gen_api_uri(category=None, difficulty=None):
     return f"https://opentdb.com/api.php?amount=1&type=multiple{cat}{dif}"
 
 
+def top(update, context):
+    table = get_total_table()[:10]
+    if table == []:
+        return
+    msg = "*Global Leaderboard*\n\n"
+    c = 0
+    for user in table:
+        tag = f"#{c+1}"
+        if c < 3:
+            tag = TROPHY_ICONS[c]
+        msg += f"`{tag}` {user.user_name} 🏆{user.score}"
+        c += 1
+    context.bot.send_message(update.effective_chat.id,
+                             msg, parse_mode=ParseMode.MARKDOWN)
+
+
+def weekly(update, context):
+    table = get_week_table(update.effective_chat.id)
+    if table == []:
+        return
+    
+    score = {}
+    ident = {}
+    for entry in table:
+        if entry.user_id in score:
+            score[entry.user_id] += entry.score
+        else:
+            score[entry.user_id] = entry.score
+            ident[entry.user_id] = entry.user_name
+
+    msg = "*Weekly Leaderboard*\n\n"
+    if update.effective_chat.id == update.effective_user.id:
+        msg = "*Your weekly stat:*\n\n"
+    c = 0
+    for user_id, score in sorted(score.items(), key=lambda x: x[1]):
+        tag = f"#{c+1}"
+        if c < 3:
+            tag = TROPHY_ICONS[c]
+        msg += f"`{tag}` {ident[user_id]} 🏆{score}"
+        c += 1
+    context.bot.send_message(update.effective_chat.id,
+                             msg, parse_mode=ParseMode.MARKDOWN)
+
+
 def start(update, context):
     update.message.reply_text(
         f"Hi {update.effective_user.first_name}! Use /quiz to start quiz")
@@ -100,6 +149,7 @@ def send_quiz(context):
     chat_id = job.context[0]
     chat_data = job.context[1]
     score = chat_data["score"]
+    ident = chat_data["ident"]
 
     for i in range(1, PER_SESSION_ROUND + 1):
         data = requests.get(gen_api_uri(category=chat_data["cat_id"])).json()[
@@ -137,11 +187,12 @@ def send_quiz(context):
             else:
                 break
 
-    # TODO Improve rank list
     score_message = "*Rank List:*\n\n"
     sorted_score = sorted(score.items(), key=lambda x: x[1])
     for k, v in sorted_score:
-        score_message += f"{k} - `{v}`\n"
+        score_message += f"{ident[k]} 🏆`+{v}`\n"
+        inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
+    score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
 
     if score_message != "*Rank List:*\n\n":
         context.bot.send_message(chat_id, text=score_message,
@@ -152,7 +203,8 @@ def send_quiz(context):
 
 def set_quiz(update, context):
     context.chat_data["cat_id"] = update.callback_query.data
-    context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
+    context.bot.delete_message(
+        update.effective_chat.id, update.effective_message.message_id)
     chat_id = update.effective_chat.id
     try:
         # Add job to queue and stop current one if there is a timer already
@@ -160,6 +212,7 @@ def set_quiz(update, context):
             update.effective_chat.id, "🏁 *Round Starts*!", parse_mode=ParseMode.MARKDOWN)
 
         context.chat_data["score"] = {}
+        context.chat_data["ident"] = {}
 
         if 'job' in context.chat_data:
             old_job = context.chat_data['job']
@@ -192,23 +245,27 @@ def unset(update, context):
 
 
 def check(update, context):
-    if not context.chat_data["answer"]:
+    try:
+        answer = context.chat_data["answer"]
+    except KeyError:
         return
-    answer = context.chat_data["answer"]
     if update.message.text.lower() == answer.lower():
         context.chat_data["answered"] = True
         del context.chat_data["answer"]
         score = context.chat_data["score"]
+        ident = context.chat_data["ident"]
         f_name = update.effective_user.first_name
+        u_id = update.effective_user.id
         answer_result = "🍀 Yes, *{}*!\n\n🏆 {} +1".format(answer, f_name)
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text=answer_result,
                                  parse_mode=ParseMode.MARKDOWN)
 
-        if f_name in score:
-            score[f_name] += 1
+        if u_id in score:
+            score[u_id] += 1
         else:
-            score[f_name] = 1
+            score[u_id] = 1
+            ident[u_id] = f_name
 
 
 def error(update, context):
@@ -223,6 +280,8 @@ def main():
     dp.add_handler(CommandHandler("quiz", send_categories))
     dp.add_handler(CallbackQueryHandler(set_quiz))
     dp.add_handler(CommandHandler("stop", unset))
+    dp.add_handler(CommandHandler("top", top))
+    dp.add_handler(CommandHandler("weekly", weekly))
     dp.add_handler(MessageHandler(Filters.text, check))
     dp.add_error_handler(error)
 
