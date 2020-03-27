@@ -93,11 +93,18 @@ def gen_api_uri(category=None, difficulty=None):
     return f"https://opentdb.com/api.php?amount=1&type=multiple{cat}{dif}"
 
 
+def get_api_data(category_id):
+    data = requests.get(gen_api_uri(category=category_id)).json()["results"][0]
+    if ("following" in html.unescape(data["question"]) or "these" in html.unescape(data["question"])):
+        data = get_api_data(category_id)
+    return data
+
+
 def top(update, context):
     table = get_total_table()[:10]
     if table == []:
         return
-    
+
     score = {}
     ident = {}
     for entry in table:
@@ -123,7 +130,7 @@ def weekly(update, context):
     table = get_week_table(update.effective_chat.id)
     if table == []:
         return
-    
+
     score = {}
     ident = {}
     for entry in table:
@@ -162,8 +169,7 @@ def send_quiz(context):
     ident = chat_data["ident"]
 
     for i in range(1, PER_SESSION_ROUND + 1):
-        data = requests.get(gen_api_uri(category=chat_data["cat_id"])).json()[
-            "results"][0]
+        data = get_api_data(chat_data["cat_id"])
 
         question = chat_data["question"] = html.unescape(data["question"])
         answer = chat_data["answer"] = html.unescape(data["correct_answer"])
