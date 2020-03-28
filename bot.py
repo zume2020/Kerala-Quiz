@@ -37,7 +37,7 @@ logger.info("Successfully started!")
 # Number of Questions/Rounds per Session
 PER_SESSION_ROUND = 5
 # Time between hints
-PER_HINT_TIME = 12
+PER_HINT_TIME = 15
 # Maximum number of hints + 2 (Q+M)
 MAX_HINT = 5
 # Keys per line in Categories
@@ -116,7 +116,7 @@ def top(update, context):
 
     msg = "*Global Leaderboard*\n\n"
     c = 0
-    for user_id, score in sorted(score.items(), key=lambda x: x[1]):
+    for user_id, score in reversed(sorted(score.items(), key=lambda x: x[1])):
         tag = f"#{c+1}"
         if c < 3:
             tag = TROPHY_ICONS[c]
@@ -144,7 +144,7 @@ def weekly(update, context):
     if update.effective_chat.id == update.effective_user.id:
         msg = "*Your weekly stat:*\n\n"
     c = 0
-    for user_id, score in sorted(score.items(), key=lambda x: x[1]):
+    for user_id, score in reversed(sorted(score.items(), key=lambda x: x[1])):
         tag = f"#{c+1}"
         if c < 3:
             tag = TROPHY_ICONS[c]
@@ -204,7 +204,7 @@ def send_quiz(context):
                 break
 
     score_message = "*Rank List:*\n\n"
-    sorted_score = sorted(score.items(), key=lambda x: x[1])
+    sorted_score = reversed(sorted(score.items(), key=lambda x: x[1]))
     for k, v in sorted_score:
         score_message += f"{ident[k]} 🏆`+{v}`\n"
         inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
