@@ -20,7 +20,7 @@ from hint import hintGen
 from telegram import ParseMode, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, run_async, CallbackQueryHandler
 from telegram.utils.helpers import escape_markdown
-from database import get_total_table, get_week_table, inc_or_new_user
+from database import get_total_table, get_week_table, inc_or_new_user, perpetual_get_status, perpetual_toggle_status
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -210,7 +210,7 @@ def send_quiz(context):
         inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
     score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
 
-    if score_message != "*Rank List:*\n\n":
+    if "🏆" in score_message:
         context.bot.send_message(chat_id, text=score_message,
                                  parse_mode=ParseMode.MARKDOWN)
     job.schedule_removal()
@@ -223,13 +223,13 @@ def set_quiz(update, context):
         update.effective_chat.id, update.effective_message.message_id)
     chat_id = update.effective_chat.id
     try:
-        # Add job to queue and stop current one if there is a timer already
         context.bot.send_message(
             update.effective_chat.id, "🏁 *Round Starts*!", parse_mode=ParseMode.MARKDOWN)
 
         context.chat_data["score"] = {}
         context.chat_data["ident"] = {}
 
+        # Add job to queue and stop current one if there is a timer already
         if 'job' in context.chat_data:
             old_job = context.chat_data['job']
             old_job.schedule_removal()
@@ -243,12 +243,19 @@ def set_quiz(update, context):
 
 def send_categories(update, context):
     """Send a list of categories to choose from"""
+    if 'job' in context.chat_data:
+        update.message.reply_text('You have an active Quiz running!')
+        return
     context.bot.send_message(update.effective_chat.id, "*Choose one:*",
                              parse_mode=ParseMode.MARKDOWN, reply_markup=CATEGORIES_KEYBOARD)
 
 
 def unset(update, context):
     """Remove the job if the user changed their mind."""
+    perpetual_status = perpetual_get_status(update.effective_chat.id)
+    if perpetual_status and (update.effective_user.id not in [admin.user.id for admin in update.effective_chat.get_administrators()]):
+        update.message.reply_markdown("Ask an *admin* to stop quiz!")
+        return
     if 'job' not in context.chat_data:
         update.message.reply_text('You have no active quiZZzZes!')
         return
@@ -284,6 +291,18 @@ def check(update, context):
             ident[u_id] = f_name
 
 
+def perpetual_toggle(update, context):
+    admin_list = [
+        admin.user.id for admin in update.effective_chat.get_administrators()]
+    if update.effective_user.id in admin_list:
+        status = perpetual_toggle_status(
+            update.effective_chat.id, update.effective_user.id)
+        msg = "Unset perpetual mode"
+        if status:
+            msg = "Set perpetual mode"
+        update.message.reply_markdown(msg)
+
+
 def error(update, context):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, context.error)
@@ -298,6 +317,8 @@ def main():
     dp.add_handler(CommandHandler("stop", unset))
     dp.add_handler(CommandHandler("top", top))
     dp.add_handler(CommandHandler("weekly", weekly))
+    dp.add_handler(CommandHandler(
+        "perpetual", perpetual_toggle, Filters.group))
     dp.add_handler(MessageHandler(Filters.text, check))
     dp.add_error_handler(error)
 

@@ -65,6 +65,20 @@ class Total(BASE):
         self.chat = chat
 
 
+class Perpetual(BASE):
+    __tablename__ = "perpetual"
+    chat_id = Column(BigInteger, primary_key=True)
+    set_by = Column(BigInteger)
+
+    def __init__(
+            self,
+            chat_id,
+            set_by):
+        self.chat_id = chat_id
+        self.set_by = set_by
+
+
+Perpetual.__table__.create(checkfirst=True)
 Total.__table__.create(checkfirst=True)
 Ranking.__table__.create(checkfirst=True)
 
@@ -101,3 +115,26 @@ def inc_or_new_user(user_id, user_name, score, chat, time):
     SESSION.commit()
     SESSION.close()
     return entry, user
+
+
+def perpetual_get_status(chat_id):
+    try:
+        return SESSION.query(Perpetual).get(chat_id)
+    except:
+        return False
+    finally:
+        SESSION.close()
+
+
+def perpetual_toggle_status(chat_id, set_by):
+    try:
+        entry = SESSION.query(Perpetual).get(chat_id)
+        SESSION.delete(entry)
+        return False
+    except:
+        entry = Perpetual(chat_id, set_by)
+        SESSION.add(entry)
+        return True
+    finally:
+        SESSION.commit()
+        SESSION.close()
