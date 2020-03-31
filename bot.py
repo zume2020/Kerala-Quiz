@@ -190,6 +190,10 @@ def send_quiz(context):
     while index < rounds + 1:
         if "infinite_mode" in chat_data:
             rounds += 1
+            perpetual_status = perpetual_get_status(chat_id)
+            if not perpetual_status and chat_data["idle"] >= 3:
+                break
+
         data = get_api_data(chat_data["cat_id"])
 
         question = chat_data["question"] = html.unescape(data["question"])
@@ -211,7 +215,8 @@ def send_quiz(context):
                     del chat_data["answer"]
                     context.bot.send_message(chat_id,
                                              text=f"⛔️ Nobody guessed, Correct answer was *{answer}*",
-                                             parse_mode=ParseMode.MARKDOWN)                    
+                                             parse_mode=ParseMode.MARKDOWN)
+                    chat_data["idle"] += 1
                     break
                 elif x > 0:
                     hint = "<i>Hint: {}</i>".format(hin_t[x-1])
@@ -243,6 +248,7 @@ def set_quiz(update, context):
     if "round" in update.callback_query.data:
         context.chat_data["rounds"] = int(
             update.callback_query.data.replace("round", ""))
+        context.chat_data["idle"] = 0
         context.bot.delete_message(
             update.effective_chat.id, update.effective_message.message_id)
         chat_id = update.effective_chat.id
@@ -310,6 +316,7 @@ def check(update, context):
         f_name = update.effective_user.first_name
         u_id = update.effective_user.id
         answer_result = "🍀 Yes, *{}*!\n\n🏆 {} +1".format(answer, f_name)
+        context.chat_data["idle"] = 0
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text=answer_result,
                                  parse_mode=ParseMode.MARKDOWN)
@@ -327,9 +334,9 @@ def perpetual_toggle(update, context):
     if update.effective_user.id in admin_list:
         status = perpetual_toggle_status(
             update.effective_chat.id, update.effective_user.id)
-        msg = "Unset perpetual mode"
+        msg = "Perpetual Mode set to: *OFF*"
         if status:
-            msg = "Set perpetual mode"
+            msg = "Perpetual Mode set to: *ON*"
         update.message.reply_markdown(msg)
 
 
