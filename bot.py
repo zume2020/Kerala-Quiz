@@ -107,6 +107,8 @@ def get_api_data(category_id):
         data = get_api_data(category_id)
         if not (1 < len(data["correct_answer"]) < 16):
             data = get_api_data(category_id)
+        if "," in data["correct_answer"]:
+            data["correct_answer"] = data["correct_answer"].replace(",", "")
     return data
 
 
