@@ -64,7 +64,8 @@ CATEGORIES = {
     "Politics": 24,
     "Art": 25,
     "Celebrities": 26,
-    "Animals": 27
+    "Animals": 27,
+    "All Categories": 0
 }
 
 CATEGORIES_KEYBOARD = []
@@ -84,6 +85,8 @@ CATEGORIES_KEYBOARD = InlineKeyboardMarkup(CATEGORIES_KEYBOARD)
 def gen_api_uri(category=None, difficulty=None):
     if category:
         cat = f"&category={category}"
+        if category == 0:
+            cat = ""
     else:
         cat = ""
     if difficulty:
