@@ -271,16 +271,14 @@ def send_quiz(context):
 
     score_message = "*Winners:*\n\n"
     # Generate a message to parsed when the quiz ends
-    sorted_score = reversed(sorted(score.items(), key=lambda x: x[1]))
-    for k, v in sorted_score:
+    for k, v in reversed(sorted(score.items(), key=lambda x: x[1])):
         score_message += f"{ident[k]} 🏆`+{v}`\n"
         inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
     score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
 
     # Sends the generated message (above) if there is at-least one winner
-    # NOTE Send a message if there is no winners (?)
-    # TODO Check if there is a winner using score dictionary
-    if "🏆" in score_message:
+    # NOTE Send a message if there are no winners (?)
+    if score:
         context.bot.send_message(chat_id, text=score_message,
                                  parse_mode=ParseMode.MARKDOWN)
 
