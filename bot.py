@@ -34,8 +34,6 @@ dp = updater.dispatcher
 logger.info("Successfully started!")
 
 
-# Number of Questions/Rounds per Session
-PER_SESSION_ROUND = 5
 # Time between hints
 PER_HINT_TIME = 15
 # Maximum number of hints + 2 (Q+M)
@@ -64,7 +62,8 @@ CATEGORIES = {
     "Politics": 24,
     "Art": 25,
     "Celebrities": 26,
-    "Animals": 27
+    "Animals": 27,
+    "All Categories": 0
 }
 
 CATEGORIES_KEYBOARD = []
@@ -80,10 +79,19 @@ for item in CATEGORIES:
         CATEGORIES_KEYBOARD.append(temp)
 CATEGORIES_KEYBOARD = InlineKeyboardMarkup(CATEGORIES_KEYBOARD)
 
+ROUND_KEYBOARD = InlineKeyboardMarkup([[InlineKeyboardButton("5 Rounds", callback_data="round5"),
+                                        InlineKeyboardButton("10 Rounds", callback_data="rounds10")],
+                                       [InlineKeyboardButton("25 Rounds", callback_data="round25"),
+                                        InlineKeyboardButton(
+                                            "50 Rounds", callback_data="round50"),
+                                        InlineKeyboardButton("∞ Rounds", callback_data="round0")]])
+
 
 def gen_api_uri(category=None, difficulty=None):
     if category:
         cat = f"&category={category}"
+        if category == 0:
+            cat = ""
     else:
         cat = ""
     if difficulty:
@@ -97,6 +105,10 @@ def get_api_data(category_id):
     data = requests.get(gen_api_uri(category=category_id)).json()["results"][0]
     if ("following" in html.unescape(data["question"]) or "these" in html.unescape(data["question"])):
         data = get_api_data(category_id)
+        if not (1 < len(data["correct_answer"]) < 16):
+            data = get_api_data(category_id)
+        if "," in data["correct_answer"]:
+            data["correct_answer"] = data["correct_answer"].replace(",", "")
     return data
 
 
@@ -165,10 +177,23 @@ def send_quiz(context):
     job = context.job
     chat_id = job.context[0]
     chat_data = job.context[1]
+    rounds = chat_data["rounds"]
+    rounds_display = rounds
+    if rounds == 0:
+        chat_data["infinite_mode"] = True
+        rounds_display = "∞"
+        rounds = 1
     score = chat_data["score"]
     ident = chat_data["ident"]
 
-    for i in range(1, PER_SESSION_ROUND + 1):
+    index = 1
+    while index < rounds + 1:
+        if "infinite_mode" in chat_data:
+            rounds += 1
+            perpetual_status = perpetual_get_status(chat_id)
+            if not perpetual_status and chat_data["idle"] >= 3:
+                break
+
         data = get_api_data(chat_data["cat_id"])
 
         question = chat_data["question"] = html.unescape(data["question"])
@@ -191,19 +216,21 @@ def send_quiz(context):
                     context.bot.send_message(chat_id,
                                              text=f"⛔️ Nobody guessed, Correct answer was *{answer}*",
                                              parse_mode=ParseMode.MARKDOWN)
+                    chat_data["idle"] += 1
                     break
                 elif x > 0:
                     hint = "<i>Hint: {}</i>".format(hin_t[x-1])
 
                 context.bot.send_message(chat_id,
-                                         text=f"❓<b>QUESTION</b> <i>[{category}]</i> \n\n{question}\n\n{hint}",
+                                         text=f"❓<b>QUESTION</b> <i>[{category}]</i> {index}/{rounds_display}\n\n{question}\n\n{hint}",
                                          parse_mode=ParseMode.HTML)
 
                 sleep(PER_HINT_TIME)
             else:
                 break
+        index += 1
 
-    score_message = "*Rank List:*\n\n"
+    score_message = "*Winners:*\n\n"
     sorted_score = reversed(sorted(score.items(), key=lambda x: x[1]))
     for k, v in sorted_score:
         score_message += f"{ident[k]} 🏆`+{v}`\n"
@@ -218,27 +245,36 @@ def send_quiz(context):
 
 
 def set_quiz(update, context):
-    context.chat_data["cat_id"] = update.callback_query.data
-    context.bot.delete_message(
-        update.effective_chat.id, update.effective_message.message_id)
-    chat_id = update.effective_chat.id
-    try:
-        context.bot.send_message(
-            update.effective_chat.id, "🏁 *Round Starts*!", parse_mode=ParseMode.MARKDOWN)
+    if "round" in update.callback_query.data:
+        context.chat_data["rounds"] = int(
+            update.callback_query.data.replace("round", ""))
+        context.chat_data["idle"] = 0
+        context.bot.delete_message(
+            update.effective_chat.id, update.effective_message.message_id)
+        chat_id = update.effective_chat.id
+        try:
+            context.bot.send_message(
+                update.effective_chat.id, "🏁 *Round Starts*!", parse_mode=ParseMode.MARKDOWN)
 
-        context.chat_data["score"] = {}
-        context.chat_data["ident"] = {}
+            context.chat_data["score"] = {}
+            context.chat_data["ident"] = {}
 
-        # Add job to queue and stop current one if there is a timer already
-        if 'job' in context.chat_data:
-            old_job = context.chat_data['job']
-            old_job.schedule_removal()
-        new_job = context.job_queue.run_repeating(
-            send_quiz, 2, context=(chat_id, context.chat_data))
-        context.chat_data['job'] = new_job
+            # Add job to queue and stop current one if there is a timer already
+            if 'job' in context.chat_data:
+                old_job = context.chat_data['job']
+                old_job.schedule_removal()
+            new_job = context.job_queue.run_repeating(
+                send_quiz, 2, context=(chat_id, context.chat_data))
+            context.chat_data['job'] = new_job
 
-    except (IndexError, ValueError):
-        update.message.reply_text('error')
+        except (IndexError, ValueError):
+            update.message.reply_text('error')
+    else:
+        context.chat_data["cat_id"] = update.callback_query.data
+        context.bot.delete_message(
+            update.effective_chat.id, update.effective_message.message_id)
+        context.bot.send_message(update.effective_chat.id, "*Choose number of rounds:*",
+                                 parse_mode=ParseMode.MARKDOWN, reply_markup=ROUND_KEYBOARD)
 
 
 def send_categories(update, context):
@@ -280,6 +316,7 @@ def check(update, context):
         f_name = update.effective_user.first_name
         u_id = update.effective_user.id
         answer_result = "🍀 Yes, *{}*!\n\n🏆 {} +1".format(answer, f_name)
+        context.chat_data["idle"] = 0
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text=answer_result,
                                  parse_mode=ParseMode.MARKDOWN)
@@ -297,9 +334,9 @@ def perpetual_toggle(update, context):
     if update.effective_user.id in admin_list:
         status = perpetual_toggle_status(
             update.effective_chat.id, update.effective_user.id)
-        msg = "Unset perpetual mode"
+        msg = "Perpetual Mode set to: *OFF*"
         if status:
-            msg = "Set perpetual mode"
+            msg = "Perpetual Mode set to: *ON*"
         update.message.reply_markdown(msg)
 
 
