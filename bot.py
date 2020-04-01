@@ -121,10 +121,11 @@ def get_api_data(category_id):
     data = requests.get(gen_api_uri(category=category_id)).json()["results"][0]
     if ("following" in html.unescape(data["question"]) or "these" in html.unescape(data["question"])):
         data = get_api_data(category_id)
-        if not (1 < len(data["correct_answer"]) < 16):
+        if not (1 < len(html.unescape(data["correct_answer"])) < 16):
             data = get_api_data(category_id)
-        if "," in data["correct_answer"]:
-            data["correct_answer"] = data["correct_answer"].replace(",", "")
+        if "," in html.unescape(data["correct_answer"]):
+            data["correct_answer"] = html.unescape(
+                data["correct_answer"]).replace(",", "")
     return data
 
 
