@@ -129,10 +129,8 @@ def get_api_data(category_id):
     return data
 
 
-# TODO Refactor top() and weekly() to reduce duplicate code
-# Get global top table from database and parse it
-def top(update, context):
-    table = get_total_table()[:10]
+# Generate table string taking a table and header message
+def gen_table_str(table, msg):
     if table == []:
         return
 
@@ -145,7 +143,6 @@ def top(update, context):
             score[entry.user_id] = entry.score
             ident[entry.user_id] = entry.user_name
 
-    msg = "*Global Leaderboard*\n\n"
     c = 0
     for user_id, score in reversed(sorted(score.items(), key=lambda x: x[1])):
         tag = f"#{c+1}"
@@ -153,37 +150,30 @@ def top(update, context):
             tag = TROPHY_ICONS[c]
         msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
         c += 1
+
+    return msg
+
+
+# Get global top table from database and parse it
+def top(update, context):
+    table = get_total_table()[:10]
+
+    msg = "*Global Leaderboard*\n\n"
+    table_str = gen_table_str(table, msg)
+
     context.bot.send_message(update.effective_chat.id,
-                             msg, parse_mode=ParseMode.MARKDOWN)
+                             table_str, parse_mode=ParseMode.MARKDOWN)
 
 
 # Get weekly top table from database and parse it
 def weekly(update, context):
     table = get_week_table(update.effective_chat.id)
-    if table == []:
-        return
-
-    score = {}
-    ident = {}
-    for entry in table:
-        if entry.user_id in score:
-            score[entry.user_id] += entry.score
-        else:
-            score[entry.user_id] = entry.score
-            ident[entry.user_id] = entry.user_name
 
     msg = "*Weekly Leaderboard*\n\n"
-    if update.effective_chat.id == update.effective_user.id:
-        msg = "*Your weekly stat:*\n\n"
-    c = 0
-    for user_id, score in reversed(sorted(score.items(), key=lambda x: x[1])):
-        tag = f"#{c+1}"
-        if c < 3:
-            tag = TROPHY_ICONS[c]
-        msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
-        c += 1
+    table_str = gen_table_str(table, msg)
+
     context.bot.send_message(update.effective_chat.id,
-                             msg, parse_mode=ParseMode.MARKDOWN)
+                             table_str, parse_mode=ParseMode.MARKDOWN)
 
 
 # Shows start message
@@ -198,7 +188,7 @@ def send_quiz(context):
 
     job = context.job
     # Job context passed from set_quiz() is (chat_id, chat_data)
-    # because both chat_id and chat_data are not directly 
+    # because both chat_id and chat_data are not directly
     # available from context
     chat_id = job.context[0]
     chat_data = job.context[1]
@@ -214,7 +204,7 @@ def send_quiz(context):
         rounds_display = "∞"
         rounds = 1
 
-    # Both score and ident are passed as empty dictionaries in chat_data    
+    # Both score and ident are passed as empty dictionaries in chat_data
     score = chat_data["score"]
     ident = chat_data["ident"]
 
@@ -272,7 +262,7 @@ def send_quiz(context):
                 context.bot.send_message(chat_id,
                                          text=f"❓<b>QUESTION</b> <i>[{category}]</i> {index}/{rounds_display}\n\n{question}\n\n{hint}",
                                          parse_mode=ParseMode.HTML)
-                
+
                 # Wait for answer
                 sleep(PER_HINT_TIME)
             else:
@@ -300,12 +290,12 @@ def send_quiz(context):
 
 
 # Set quiz environment
-# This is a callback button handler, 
+# This is a callback button handler,
 # therefore multiple inputs will need support
 def set_quiz(update, context):
     # Check if this is an input for ROUNDS_KEYBOARD
     if "round" in update.callback_query.data:
-        # Set value of rounds in chat_data as integer from 
+        # Set value of rounds in chat_data as integer from
         # callback_data which passed in ROUND_KEYBOARD
         context.chat_data["rounds"] = int(
             update.callback_query.data.replace("round", ""))
@@ -339,7 +329,7 @@ def set_quiz(update, context):
     # Since this is not ROUND_KEYBOARDS's input, this can only be
     # input of CATEGORIES_KEYBOARD which is the first stage of two stages
     else:
-        # Set cat_id (category id) in chat_data as callback_data 
+        # Set cat_id (category id) in chat_data as callback_data
         context.chat_data["cat_id"] = update.callback_query.data
         # Delete CATEGORIES_KEYBOARD sent to channel
         context.bot.delete_message(
@@ -369,7 +359,7 @@ def unset(update, context):
     # Get perpetual mode status from database
     perpetual_status = perpetual_get_status(update.effective_chat.id)
 
-    # Check if a quiz is running by checking 'job' in chat_data. 
+    # Check if a quiz is running by checking 'job' in chat_data.
     # If not, abort operation
     if 'job' not in context.chat_data:
         update.message.reply_text('You have no active quiZZzZes!')
@@ -397,7 +387,7 @@ def check(update, context):
     except KeyError:
         return
 
-    # Check if received answer is correct 
+    # Check if received answer is correct
     if update.message.text.lower() == answer.lower():
         context.chat_data["answered"] = True
         del context.chat_data["answer"]
@@ -423,7 +413,7 @@ def perpetual_toggle(update, context):
     # Get channel admin list
     admin_list = [
         admin.user.id for admin in update.effective_chat.get_administrators()]
-    
+
     # If user is in admin_list, toggle perpetual mode
     if update.effective_user.id in admin_list:
         status = perpetual_toggle_status(
