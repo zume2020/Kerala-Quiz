@@ -129,6 +129,18 @@ def get_api_data(category_id):
     return data
 
 
+# Generate a message to parsed when the quiz ends
+def gen_winners_str(score, ident, chat_id):
+    score_message = "*Winners:*\n\n"
+
+    for k, v in reversed(sorted(score.items(), key=lambda x: x[1])):
+        score_message += f"{ident[k]} 🏆`+{v}`\n"
+        inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
+
+    score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
+    return score_message
+
+
 # Generate table string taking a table and header message
 def gen_table_str(table, msg):
     if table == []:
@@ -242,6 +254,10 @@ def send_quiz(context):
         hin_t = hintGen(answer)
 
         for x in range(hints):
+            # Abort if Quiz is stopped
+            if "job" not in chat_data:
+                return
+
             # Check if question has already been answered. See check()
             if chat_data["answered"] == False:
                 hint = ""
@@ -269,16 +285,10 @@ def send_quiz(context):
                 break
         index += 1
 
-    score_message = "*Winners:*\n\n"
-    # Generate a message to parsed when the quiz ends
-    for k, v in reversed(sorted(score.items(), key=lambda x: x[1])):
-        score_message += f"{ident[k]} 🏆`+{v}`\n"
-        inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
-    score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
-
-    # Sends the generated message (above) if there is at-least one winner
+    # Sends the generated message if there is at-least one winner
     # NOTE Send a message if there are no winners (?)
     if score:
+        score_message = gen_winners_str(score, ident, chat_id)
         context.bot.send_message(chat_id, text=score_message,
                                  parse_mode=ParseMode.MARKDOWN)
 
@@ -291,7 +301,7 @@ def send_quiz(context):
 # This is a callback button handler,
 # therefore multiple inputs will need support
 def set_quiz(update, context):
-    # Check if this is an input for ROUNDS_KEYBOARD
+    # Check if this is an input for ROUND_KEYBOARD
     if "round" in update.callback_query.data:
         # Set value of rounds in chat_data as integer from
         # callback_data which passed in ROUND_KEYBOARD
@@ -370,11 +380,17 @@ def unset(update, context):
 
     job = context.chat_data['job']
 
+    score_message = "✋ *Stopped*!\n\n"
+    # Sends the generated message if there is at-least one winner
+    if context.chat_data["score"]:
+        score_message += gen_winners_str(
+            context.chat_data["score"], context.chat_data["ident"], update.effective_chat.id)
+                                 
     # Remove job from queue and clear chat_data
     job.schedule_removal()
     context.chat_data.clear()
 
-    update.message.reply_text('✋ *Stopped*!', parse_mode=ParseMode.MARKDOWN)
+    update.message.reply_markdown(score_message, parse_mode=ParseMode.MARKDOWN)
 
 
 # Check if message received is correct answer
