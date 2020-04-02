@@ -14,6 +14,7 @@ import config
 import re
 import html
 import datetime
+import unidecode
 
 from time import sleep
 from hint import hintGen
@@ -44,6 +45,11 @@ PER_LINE_KEYS = 3
 TROPHY_ICONS = ["🥇", "🥈", "🥉"]
 
 # Categories
+# These are taken from the website which provides questions, which is
+# https://opentdb.com/ . So in case of any changes to existing or in
+# case of new categories, refer to the mentioned website. Option
+# named All Categories does not exist in https://opentdb.com/ thus it
+# is a placeholder for removing category input from API call
 CATEGORIES = {
     "General Knowledge": 9,
     "Books": 10,
@@ -66,6 +72,9 @@ CATEGORIES = {
     "All Categories": 0
 }
 
+# CATEGORIES_KEYBOARD is the telegram Inline keyboard which shows
+# all the categories in CATEGORIES dictionary. Number of buttons
+# per line is configured based on PER_LINE_KEYS variable above
 CATEGORIES_KEYBOARD = []
 count = 0
 temp = []
@@ -79,6 +88,8 @@ for item in CATEGORIES:
         CATEGORIES_KEYBOARD.append(temp)
 CATEGORIES_KEYBOARD = InlineKeyboardMarkup(CATEGORIES_KEYBOARD)
 
+# ROUND_KEYBOARD is the telegram Inline keyboard which shows available
+# options to choose from a number of rounds
 ROUND_KEYBOARD = InlineKeyboardMarkup([[InlineKeyboardButton("5 Rounds", callback_data="round5"),
                                         InlineKeyboardButton("10 Rounds", callback_data="rounds10")],
                                        [InlineKeyboardButton("25 Rounds", callback_data="round25"),
@@ -87,135 +98,180 @@ ROUND_KEYBOARD = InlineKeyboardMarkup([[InlineKeyboardButton("5 Rounds", callbac
                                         InlineKeyboardButton("∞ Rounds", callback_data="round0")]])
 
 
+# Generating API uri by taking category id and difficulty as **kwargs
 def gen_api_uri(category=None, difficulty=None):
-    if category:
+    # If category is 0, it means All Category and thus category string in
+    # API call should be removed hence no specified category
+    if category == 0:
+        cat = ""
+    elif category:
         cat = f"&category={category}"
-        if category == 0:
-            cat = ""
     else:
         cat = ""
     if difficulty:
         dif = f"&difficulty={difficulty}"
     else:
-        dif = "&difficulty=medium"
+        dif = ""
     return f"https://opentdb.com/api.php?amount=1&type=multiple{cat}{dif}"
 
 
+# Get data from API. This is a recursive function
 def get_api_data(category_id):
     data = requests.get(gen_api_uri(category=category_id)).json()["results"][0]
     if ("following" in html.unescape(data["question"]) or "these" in html.unescape(data["question"])):
         data = get_api_data(category_id)
-        if not (1 < len(data["correct_answer"]) < 16):
-            data = get_api_data(category_id)
-        if "," in data["correct_answer"]:
-            data["correct_answer"] = data["correct_answer"].replace(",", "")
+    if not (1 < len(html.unescape(data["correct_answer"])) < 16):
+        data = get_api_data(category_id)
+    if "," in html.unescape(data["correct_answer"]):
+        data["correct_answer"] = html.unescape(data["correct_answer"]).replace(",", "")
+
+    data["question"] = html.unescape(data["question"])
+    data["category"] = html.unescape(data["category"])
+    data["correct_answer"] = unidecode.unidecode(html.unescape(data["correct_answer"]))
     return data
 
 
+# Generate a message to parsed when the quiz ends
+def gen_winners_str(score, ident, chat_id):
+    score_message = "*Winners:*\n\n"
+
+    for k, v in reversed(sorted(score.items(), key=lambda x: x[1])):
+        score_message += f"{ident[k]} 🏆`+{v}`\n"
+        inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
+
+    score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
+    return score_message
+
+
+# Generate table string taking a table and header message
+def gen_table_str(table, msg):
+    if table == []:
+        return
+
+    score = {}
+    ident = {}
+    for entry in table:
+        if entry.user_id in score:
+            score[entry.user_id] += entry.score
+        else:
+            score[entry.user_id] = entry.score
+            ident[entry.user_id] = entry.user_name
+
+    c = 0
+    for user_id, score in reversed(sorted(score.items(), key=lambda x: x[1])):
+        tag = f"#{c+1}"
+        if c < 3:
+            tag = TROPHY_ICONS[c]
+        msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
+        c += 1
+
+    return msg
+
+
+# Get global top table from database and parse it
 def top(update, context):
     table = get_total_table()[:10]
-    if table == []:
-        return
-
-    score = {}
-    ident = {}
-    for entry in table:
-        if entry.user_id in score:
-            score[entry.user_id] += entry.score
-        else:
-            score[entry.user_id] = entry.score
-            ident[entry.user_id] = entry.user_name
 
     msg = "*Global Leaderboard*\n\n"
-    c = 0
-    for user_id, score in reversed(sorted(score.items(), key=lambda x: x[1])):
-        tag = f"#{c+1}"
-        if c < 3:
-            tag = TROPHY_ICONS[c]
-        msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
-        c += 1
+    table_str = gen_table_str(table, msg)
+
     context.bot.send_message(update.effective_chat.id,
-                             msg, parse_mode=ParseMode.MARKDOWN)
+                             table_str, parse_mode=ParseMode.MARKDOWN)
 
 
+# Get weekly top table from database and parse it
 def weekly(update, context):
     table = get_week_table(update.effective_chat.id)
-    if table == []:
-        return
-
-    score = {}
-    ident = {}
-    for entry in table:
-        if entry.user_id in score:
-            score[entry.user_id] += entry.score
-        else:
-            score[entry.user_id] = entry.score
-            ident[entry.user_id] = entry.user_name
 
     msg = "*Weekly Leaderboard*\n\n"
-    if update.effective_chat.id == update.effective_user.id:
-        msg = "*Your weekly stat:*\n\n"
-    c = 0
-    for user_id, score in reversed(sorted(score.items(), key=lambda x: x[1])):
-        tag = f"#{c+1}"
-        if c < 3:
-            tag = TROPHY_ICONS[c]
-        msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
-        c += 1
+    table_str = gen_table_str(table, msg)
+
     context.bot.send_message(update.effective_chat.id,
-                             msg, parse_mode=ParseMode.MARKDOWN)
+                             table_str, parse_mode=ParseMode.MARKDOWN)
 
 
+# Shows start message
 def start(update, context):
     update.message.reply_text(
         f"Hi {update.effective_user.first_name}! Use /quiz to start quiz")
 
 
+# Send question, hints and other messages
 def send_quiz(context):
     """Send the alarm message."""
 
     job = context.job
+    # Job context passed from set_quiz() is (chat_id, chat_data)
+    # because both chat_id and chat_data are not directly
+    # available from context
     chat_id = job.context[0]
     chat_data = job.context[1]
     rounds = chat_data["rounds"]
     rounds_display = rounds
+
+    # If rounds is 0, then infinite mode should be turned on such
+    # that quiz will never end. There is an exception to this
+    # when perpetual mode is turned ON. Change rounds's value to
+    # 1 because loop will not run while the value is 0
     if rounds == 0:
         chat_data["infinite_mode"] = True
         rounds_display = "∞"
         rounds = 1
+
+    # Both score and ident are passed as empty dictionaries in chat_data
     score = chat_data["score"]
     ident = chat_data["ident"]
 
+    # Initialize and run while loop. For loop can not be used since we
+    # can not run infinite mode in for loop
     index = 1
     while index < rounds + 1:
+        # If infinite mode is turned ON, increment value of rounds in each
+        # iteration so that the condition being checked will never be false
         if "infinite_mode" in chat_data:
             rounds += 1
+            # Get perpetual mode status from database
             perpetual_status = perpetual_get_status(chat_id)
+            # If perpetual status is turned OFF and there are more
+            # than 2 idle (>=3)rounds, then stop the quiz by
+            # breaking the while loop
             if not perpetual_status and chat_data["idle"] >= 3:
                 break
 
+        # Get data from API
         data = get_api_data(chat_data["cat_id"])
 
-        question = chat_data["question"] = html.unescape(data["question"])
-        answer = chat_data["answer"] = html.unescape(data["correct_answer"])
-        category = chat_data["category"] = html.unescape(data["category"])
+        question = chat_data["question"] = data["question"]
+        answer = chat_data["answer"] = data["correct_answer"]
+        category = chat_data["category"] = data["category"]
 
         chat_data["answered"] = False
 
         hints = MAX_HINT
+        # If answer is too short, number of hints needed should be fewer
         if len(answer) < MAX_HINT:
             hints = len(answer)
 
+        # Generate hints based on answer. See hint.py
         hin_t = hintGen(answer)
 
         for x in range(hints):
+            # Abort if Quiz is stopped
+            if "job" not in chat_data:
+                return
+
+            # Check if question has already been answered. See check()
             if chat_data["answered"] == False:
                 hint = ""
+                # Check if iteration has reached last step
                 if x == hints-1:
                     del chat_data["answer"]
                     context.bot.send_message(chat_id,
                                              text=f"⛔️ Nobody guessed, Correct answer was *{answer}*",
                                              parse_mode=ParseMode.MARKDOWN)
+                    # Increment number of continues idle rounds by 1.
+                    # If someone answers, counter will be reset to 0
+                    # See check()
                     chat_data["idle"] += 1
                     break
                 elif x > 0:
@@ -225,30 +281,37 @@ def send_quiz(context):
                                          text=f"❓<b>QUESTION</b> <i>[{category}]</i> {index}/{rounds_display}\n\n{question}\n\n{hint}",
                                          parse_mode=ParseMode.HTML)
 
+                # Wait for answer
                 sleep(PER_HINT_TIME)
             else:
                 break
         index += 1
 
-    score_message = "*Winners:*\n\n"
-    sorted_score = reversed(sorted(score.items(), key=lambda x: x[1]))
-    for k, v in sorted_score:
-        score_message += f"{ident[k]} 🏆`+{v}`\n"
-        inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
-    score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
-
-    if "🏆" in score_message:
+    # Sends the generated message if there is at-least one winner
+    # NOTE Send a message if there are no winners (?)
+    if score:
+        score_message = gen_winners_str(score, ident, chat_id)
         context.bot.send_message(chat_id, text=score_message,
                                  parse_mode=ParseMode.MARKDOWN)
+
+    # Remove job from queue and clear chat_data
     job.schedule_removal()
     chat_data.clear()
 
 
+# Set quiz environment
+# This is a callback button handler,
+# therefore multiple inputs will need support
 def set_quiz(update, context):
+    # Check if this is an input for ROUND_KEYBOARD
     if "round" in update.callback_query.data:
+        # Set value of rounds in chat_data as integer from
+        # callback_data which passed in ROUND_KEYBOARD
         context.chat_data["rounds"] = int(
             update.callback_query.data.replace("round", ""))
+        # Initialize idle value as 0
         context.chat_data["idle"] = 0
+        # Delete ROUND_KEYBOARD which is already sent to channel
         context.bot.delete_message(
             update.effective_chat.id, update.effective_message.message_id)
         chat_id = update.effective_chat.id
@@ -256,58 +319,91 @@ def set_quiz(update, context):
             context.bot.send_message(
                 update.effective_chat.id, "🏁 *Round Starts*!", parse_mode=ParseMode.MARKDOWN)
 
+            # initialize score and ident in chat_data as empty dictionary
             context.chat_data["score"] = {}
             context.chat_data["ident"] = {}
 
             # Add job to queue and stop current one if there is a timer already
+            # NOTE This can probably be removed
             if 'job' in context.chat_data:
                 old_job = context.chat_data['job']
                 old_job.schedule_removal()
+
+            # Run job
             new_job = context.job_queue.run_repeating(
                 send_quiz, 2, context=(chat_id, context.chat_data))
             context.chat_data['job'] = new_job
 
         except (IndexError, ValueError):
             update.message.reply_text('error')
+    # Since this is not ROUND_KEYBOARDS's input, this can only be
+    # input of CATEGORIES_KEYBOARD which is the first stage of two stages
     else:
+        # Set cat_id (category id) in chat_data as callback_data
         context.chat_data["cat_id"] = update.callback_query.data
+        # Delete CATEGORIES_KEYBOARD sent to channel
         context.bot.delete_message(
             update.effective_chat.id, update.effective_message.message_id)
+        # Send ROUND_KEYBOARD to channel
+        # TODO Improve message
         context.bot.send_message(update.effective_chat.id, "*Choose number of rounds:*",
                                  parse_mode=ParseMode.MARKDOWN, reply_markup=ROUND_KEYBOARD)
 
 
+# Send CATEGORIES_BUTTON
 def send_categories(update, context):
     """Send a list of categories to choose from"""
+    # If there is a job in chat_data, meaning
+    # a quiz is already running, abort operation
     if 'job' in context.chat_data:
         update.message.reply_text('You have an active Quiz running!')
         return
+    # TODO Improve message
     context.bot.send_message(update.effective_chat.id, "*Choose one:*",
                              parse_mode=ParseMode.MARKDOWN, reply_markup=CATEGORIES_KEYBOARD)
 
 
+# Stop Quiz
 def unset(update, context):
     """Remove the job if the user changed their mind."""
+    # Get perpetual mode status from database
     perpetual_status = perpetual_get_status(update.effective_chat.id)
-    if perpetual_status and (update.effective_user.id not in [admin.user.id for admin in update.effective_chat.get_administrators()]):
-        update.message.reply_markdown("Ask an *admin* to stop quiz!")
-        return
+
+    # Check if a quiz is running by checking 'job' in chat_data.
+    # If not, abort operation
     if 'job' not in context.chat_data:
         update.message.reply_text('You have no active quiZZzZes!')
         return
 
+    # Only an admin can stop the quiz if perpetual mode is set to ON
+    if perpetual_status and (update.effective_user.id not in [admin.user.id for admin in update.effective_chat.get_administrators()]):
+        update.message.reply_markdown("Ask an *admin* to stop quiz!")
+        return
+
     job = context.chat_data['job']
+
+    score_message = "✋ *Stopped*!\n\n"
+    # Sends the generated message if there is at-least one winner
+    if context.chat_data["score"]:
+        score_message += gen_winners_str(
+            context.chat_data["score"], context.chat_data["ident"], update.effective_chat.id)
+                                 
+    # Remove job from queue and clear chat_data
     job.schedule_removal()
     context.chat_data.clear()
 
-    update.message.reply_text('✋ *Stopped*!', parse_mode=ParseMode.MARKDOWN)
+    update.message.reply_markdown(score_message, parse_mode=ParseMode.MARKDOWN)
 
 
+# Check if message received is correct answer
 def check(update, context):
+    # Check if there is answer set. If not, abort
     try:
         answer = context.chat_data["answer"]
     except KeyError:
         return
+
+    # Check if received answer is correct
     if update.message.text.lower() == answer.lower():
         context.chat_data["answered"] = True
         del context.chat_data["answer"]
@@ -328,9 +424,13 @@ def check(update, context):
             ident[u_id] = f_name
 
 
+# Toggle perpetual mode
 def perpetual_toggle(update, context):
+    # Get channel admin list
     admin_list = [
         admin.user.id for admin in update.effective_chat.get_administrators()]
+
+    # If user is in admin_list, toggle perpetual mode
     if update.effective_user.id in admin_list:
         status = perpetual_toggle_status(
             update.effective_chat.id, update.effective_user.id)
@@ -340,15 +440,18 @@ def perpetual_toggle(update, context):
         update.message.reply_markdown(msg)
 
 
+# Error handler
 def error(update, context):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, context.error)
 
 
+# Main function
 def main():
     """Run bot."""
     dp.add_handler(CommandHandler("start", start, Filters.private))
     dp.add_handler(CommandHandler("help", start))
+    # NOTE Filter quiz to groups only (?)
     dp.add_handler(CommandHandler("quiz", send_categories))
     dp.add_handler(CallbackQueryHandler(set_quiz))
     dp.add_handler(CommandHandler("stop", unset))
@@ -363,5 +466,6 @@ def main():
     updater.idle()
 
 
+# Run main()
 if __name__ == '__main__':
     main()
