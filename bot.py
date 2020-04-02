@@ -150,7 +150,7 @@ def gen_table_str(table, msg):
 
     score = {}
     ident = {}
-    for entry in table:
+    for entry in table[:10]:
         if entry.user_id in score:
             score[entry.user_id] += entry.score
         else:
@@ -170,7 +170,7 @@ def gen_table_str(table, msg):
 
 # Get global top table from database and parse it
 def top(update, context):
-    table = get_total_table()[:10]
+    table = get_total_table()
 
     msg = "*Global Leaderboard*\n\n"
     table_str = gen_table_str(table, msg)

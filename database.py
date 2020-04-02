@@ -47,7 +47,7 @@ class Ranking(BASE):
 
 class Total(BASE):
     __tablename__ = "total"
-    _id = Column(Integer, primary_key=True)
+    _id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger)
     user_name = Column(String)
     score = Column(Integer)
