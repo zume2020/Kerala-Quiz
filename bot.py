@@ -14,6 +14,7 @@ import config
 import re
 import html
 import datetime
+import unidecode
 
 from time import sleep
 from hint import hintGen
@@ -99,33 +100,34 @@ ROUND_KEYBOARD = InlineKeyboardMarkup([[InlineKeyboardButton("5 Rounds", callbac
 
 # Generating API uri by taking category id and difficulty as **kwargs
 def gen_api_uri(category=None, difficulty=None):
-    if category:
+    # If category is 0, it means All Category and thus category string in
+    # API call should be removed hence no specified category
+    if category == 0:
+        cat = ""
+    elif category:
         cat = f"&category={category}"
-        # If category is 0, it means All Category and thus category string in
-        # API call should be removed hence no specified category
-        # NOTE Refactor this
-        if category == 0:
-            cat = ""
     else:
         cat = ""
     if difficulty:
         dif = f"&difficulty={difficulty}"
     else:
-        dif = "&difficulty=medium"
+        dif = ""
     return f"https://opentdb.com/api.php?amount=1&type=multiple{cat}{dif}"
 
 
 # Get data from API. This is a recursive function
-# TODO Refactor this
 def get_api_data(category_id):
     data = requests.get(gen_api_uri(category=category_id)).json()["results"][0]
     if ("following" in html.unescape(data["question"]) or "these" in html.unescape(data["question"])):
         data = get_api_data(category_id)
-        if not (1 < len(html.unescape(data["correct_answer"])) < 16):
-            data = get_api_data(category_id)
-        if "," in html.unescape(data["correct_answer"]):
-            data["correct_answer"] = html.unescape(
-                data["correct_answer"]).replace(",", "")
+    if not (1 < len(html.unescape(data["correct_answer"])) < 16):
+        data = get_api_data(category_id)
+    if "," in html.unescape(data["correct_answer"]):
+        data["correct_answer"] = html.unescape(data["correct_answer"]).replace(",", "")
+
+    data["question"] = html.unescape(data["question"])
+    data["category"] = html.unescape(data["category"])
+    data["correct_answer"] = unidecode.unidecode(html.unescape(data["correct_answer"]))
     return data
 
 
@@ -239,9 +241,9 @@ def send_quiz(context):
         # Get data from API
         data = get_api_data(chat_data["cat_id"])
 
-        question = chat_data["question"] = html.unescape(data["question"])
-        answer = chat_data["answer"] = html.unescape(data["correct_answer"])
-        category = chat_data["category"] = html.unescape(data["category"])
+        question = chat_data["question"] = data["question"]
+        answer = chat_data["answer"] = data["correct_answer"]
+        category = chat_data["category"] = data["category"]
 
         chat_data["answered"] = False
 
