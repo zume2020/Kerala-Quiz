@@ -451,17 +451,17 @@ def error(update, context):
 # Main function
 def main():
     """Run bot."""
-    dp.add_handler(CommandHandler("start", start, Filters.private))
-    dp.add_handler(CommandHandler("help", start))
+    dp.add_handler(CommandHandler("start", start, Filters.group))
+    dp.add_handler(CommandHandler("help", start, Filters.group))
     # NOTE Filter quiz to groups only (?)
-    dp.add_handler(CommandHandler("quiz", send_categories))
+    dp.add_handler(CommandHandler("quiz", send_categories, Filters.group))
     dp.add_handler(CallbackQueryHandler(set_quiz))
-    dp.add_handler(CommandHandler("stop", unset))
-    dp.add_handler(CommandHandler("top", top))
-    dp.add_handler(CommandHandler("weekly", weekly))
+    dp.add_handler(CommandHandler("stop", unset, Filters.group))
+    dp.add_handler(CommandHandler("top", top, Filters.group))
+    dp.add_handler(CommandHandler("weekly", weekly, Filters.group))
     dp.add_handler(CommandHandler(
         "perpetual", perpetual_toggle, Filters.group))
-    dp.add_handler(MessageHandler(Filters.text, check))
+    dp.add_handler(MessageHandler(Filters.text & Filters.group, check))
     dp.add_error_handler(error)
 
     updater.start_polling()
