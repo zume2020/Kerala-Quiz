@@ -150,7 +150,7 @@ def gen_table_str(table, msg):
 
     score = {}
     ident = {}
-    for entry in table[:10]:
+    for entry in table:
         if entry.user_id in score:
             score[entry.user_id] += entry.score
         else:
@@ -164,6 +164,8 @@ def gen_table_str(table, msg):
             tag = TROPHY_ICONS[c]
         msg += f"`{tag}` {ident[user_id]} 🏆{score}\n"
         c += 1
+        if c == 10:
+            break
 
     return msg
 
