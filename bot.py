@@ -91,7 +91,7 @@ CATEGORIES_KEYBOARD = InlineKeyboardMarkup(CATEGORIES_KEYBOARD)
 # ROUND_KEYBOARD is the telegram Inline keyboard which shows available
 # options to choose from a number of rounds
 ROUND_KEYBOARD = InlineKeyboardMarkup([[InlineKeyboardButton("5 Rounds", callback_data="round5"),
-                                        InlineKeyboardButton("10 Rounds", callback_data="rounds10")],
+                                        InlineKeyboardButton("10 Rounds", callback_data="round10")],
                                        [InlineKeyboardButton("25 Rounds", callback_data="round25"),
                                         InlineKeyboardButton(
                                             "50 Rounds", callback_data="round50"),
@@ -123,20 +123,29 @@ def get_api_data(category_id):
     if not (1 < len(html.unescape(data["correct_answer"])) < 16):
         data = get_api_data(category_id)
     if "," in html.unescape(data["correct_answer"]):
-        data["correct_answer"] = html.unescape(data["correct_answer"]).replace(",", "")
+        data["correct_answer"] = html.unescape(
+            data["correct_answer"]).replace(",", "")
 
     data["question"] = html.unescape(data["question"])
     data["category"] = html.unescape(data["category"])
-    data["correct_answer"] = unidecode.unidecode(html.unescape(data["correct_answer"]))
+    data["correct_answer"] = unidecode.unidecode(
+        html.unescape(data["correct_answer"]))
     return data
 
 
+def calc_percentage(a, b):
+    return round((a/b)*100)
+
+
 # Generate a message to parsed when the quiz ends
-def gen_winners_str(score, ident, chat_id):
+def gen_winners_str(score, ident, chat_id, rounds):
     score_message = "*Winners:*\n\n"
 
     for k, v in reversed(sorted(score.items(), key=lambda x: x[1])):
-        score_message += f"{ident[k]} 🏆`+{v}`\n"
+        score_message += f"{ident[k]} 🏆`+{v}`"
+        if rounds > 0:
+            score_message += f" `{calc_percentage(v, rounds)}%`"
+        score_message += "\n"
         inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
 
     score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
@@ -240,6 +249,8 @@ def send_quiz(context):
             if not perpetual_status and chat_data["idle"] >= 3:
                 break
 
+        chat_data["current"] = index
+
         # Get data from API
         data = get_api_data(chat_data["cat_id"])
 
@@ -292,7 +303,7 @@ def send_quiz(context):
     # Sends the generated message if there is at-least one winner
     # NOTE Send a message if there are no winners (?)
     if score:
-        score_message = gen_winners_str(score, ident, chat_id)
+        score_message = gen_winners_str(score, ident, chat_id, chat_data["current"])
         context.bot.send_message(chat_id, text=score_message,
                                  parse_mode=ParseMode.MARKDOWN)
 
@@ -307,6 +318,7 @@ def send_quiz(context):
 def set_quiz(update, context):
     # Check if this is an input for ROUND_KEYBOARD
     if "round" in update.callback_query.data:
+        context.chat_data["current"] = 0
         # Set value of rounds in chat_data as integer from
         # callback_data which passed in ROUND_KEYBOARD
         context.chat_data["rounds"] = int(
@@ -388,8 +400,8 @@ def unset(update, context):
     # Sends the generated message if there is at-least one winner
     if context.chat_data["score"]:
         score_message += gen_winners_str(
-            context.chat_data["score"], context.chat_data["ident"], update.effective_chat.id)
-                                 
+            context.chat_data["score"], context.chat_data["ident"], update.effective_chat.id, context.chat_data["current"])
+
     # Remove job from queue and clear chat_data
     job.schedule_removal()
     context.chat_data.clear()
