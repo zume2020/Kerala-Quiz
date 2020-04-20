@@ -139,13 +139,10 @@ def calc_percentage(a, b):
 
 # Generate a message to parsed when the quiz ends
 def gen_winners_str(score, ident, chat_id, rounds):
-    score_message = "*Winners:*\n\n"
+    score_message = f"*Winners:*\n_{rounds} Questions_\n\n"
 
     for k, v in reversed(sorted(score.items(), key=lambda x: x[1])):
-        score_message += f"{ident[k]} 🏆`+{v}`"
-        if rounds > 0:
-            score_message += f" `{calc_percentage(v, rounds)}%`"
-        score_message += "\n"
+        score_message += f"{ident[k]} 🏆`+{v} ({calc_percentage(v, rounds)}%)`\n"
         inc_or_new_user(k, ident[k], v, chat_id, datetime.datetime.now())
 
     score_message += f"\n*Global Leaderboard:* {escape_markdown('/top')}\n*This Week:* {escape_markdown('/weekly')}"
@@ -303,7 +300,8 @@ def send_quiz(context):
     # Sends the generated message if there is at-least one winner
     # NOTE Send a message if there are no winners (?)
     if score:
-        score_message = gen_winners_str(score, ident, chat_id, chat_data["current"])
+        score_message = gen_winners_str(
+            score, ident, chat_id, chat_data["current"])
         context.bot.send_message(chat_id, text=score_message,
                                  parse_mode=ParseMode.MARKDOWN)
 
