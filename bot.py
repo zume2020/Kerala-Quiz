@@ -15,6 +15,7 @@ import re
 import html
 import datetime
 import unidecode
+import re
 
 from time import sleep
 from hint import hintGen
@@ -416,7 +417,7 @@ def check(update, context):
         return
 
     # Check if received answer is correct
-    if update.message.text.lower() == answer.lower():
+    if re.match(f"^(?:the |a )?{answer}(?:'s)?s?$", update.message.text, re.IGNORECASE):
         context.chat_data["answered"] = True
         del context.chat_data["answer"]
         score = context.chat_data["score"]
