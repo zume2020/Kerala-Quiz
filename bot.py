@@ -127,6 +127,7 @@ def gen_api_token(token=False, reset=False):
 def get_api_data(token, category_id):
     data = requests.get(gen_api_uri(token, category=category_id)).json()
     if data['response_code'] != 0:
+        gen_api_token(token=token, reset=True)
         data = get_api_data(token, category_id)
     data = data['results'][0]
     if ("following" in html.unescape(data["question"]) or "these" in html.unescape(data["question"])):
