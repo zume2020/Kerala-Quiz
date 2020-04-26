@@ -100,7 +100,7 @@ ROUND_KEYBOARD = InlineKeyboardMarkup([[InlineKeyboardButton("5 Rounds", callbac
 
 
 # Generating API uri by taking category id and difficulty as **kwargs
-def gen_api_uri(category=None, difficulty=None):
+def gen_api_uri(token, category=None, difficulty=None):
     # If category is 0, it means All Category and thus category string in
     # API call should be removed hence no specified category
     if category == 0:
@@ -113,16 +113,26 @@ def gen_api_uri(category=None, difficulty=None):
         dif = f"&difficulty={difficulty}"
     else:
         dif = ""
-    return f"https://opentdb.com/api.php?amount=1&type=multiple{cat}{dif}"
+    return f"https://opentdb.com/api.php?amount=1&type=multiple{cat}{dif}&token={token}"
+
+
+# Generate a session token so questions will not be repeated
+def gen_api_token(token=False, reset=False):
+    if reset:
+        return requests.get(f'https://opentdb.com/api_token.php?command=reset&token={token}').json()['response_code']
+    return requests.get('https://opentdb.com/api_token.php?command=request').json()['token']
 
 
 # Get data from API. This is a recursive function
-def get_api_data(category_id):
-    data = requests.get(gen_api_uri(category=category_id)).json()["results"][0]
+def get_api_data(token, category_id):
+    data = requests.get(gen_api_uri(token, category=category_id)).json()
+    if data['response_code'] != 0:
+        data = get_api_data(token, category_id)
+    data = data['results'][0]
     if ("following" in html.unescape(data["question"]) or "these" in html.unescape(data["question"])):
-        data = get_api_data(category_id)
+        data = get_api_data(token, category_id)
     if not (1 < len(html.unescape(data["correct_answer"])) < 16):
-        data = get_api_data(category_id)
+        data = get_api_data(token, category_id)
     if "," in html.unescape(data["correct_answer"]):
         data["correct_answer"] = html.unescape(
             data["correct_answer"]).replace(",", "")
@@ -250,7 +260,7 @@ def send_quiz(context):
         chat_data["current"] = index
 
         # Get data from API
-        data = get_api_data(chat_data["cat_id"])
+        data = get_api_data(chat_data['token'], chat_data["cat_id"])
 
         question = chat_data["question"] = data["question"]
         answer = chat_data["answer"] = data["correct_answer"]
@@ -324,6 +334,8 @@ def set_quiz(update, context):
             update.callback_query.data.replace("round", ""))
         # Initialize idle value as 0
         context.chat_data["idle"] = 0
+        # Set session token to avoid duplicate questions
+        context.chat_data['token'] = gen_api_token()
         # Delete ROUND_KEYBOARD which is already sent to channel
         context.bot.delete_message(
             update.effective_chat.id, update.effective_message.message_id)
