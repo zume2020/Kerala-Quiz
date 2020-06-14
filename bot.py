@@ -7,6 +7,7 @@
 # license: MIT
 # -------------------------------------------------------------
 
+import os
 import logging
 import json
 import requests
@@ -31,7 +32,14 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger("QUIZ")
 
 logger.info("Starting Engine!")
+
+PORT = int(os.environ.get('PORT', '8443'))
+
 updater = Updater(config.TOKEN, use_context=True)
+updater.start_webhook(listen="0.0.0.0",
+                        port=PORT,
+                        url_path=config.TOKEN)
+updater.bot.set_webhook("https://kerala-quiz.herokuapp.com/" + config.TOKEN)
 dp = updater.dispatcher
 logger.info("Successfully started!")
 
